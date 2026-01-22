@@ -25,7 +25,7 @@ class ToollessChat:
         class MockResponse:
             def __init__(self, text):
                 self.text = text
-                self.sources = []
+                self.sources = [{"tool_name": "llm", "raw_output": "General Knowledge"}]
             def __str__(self):
                 return self.text
         return MockResponse(str(response))
@@ -57,7 +57,11 @@ def get_agent(use_web: bool = False, use_docs: bool = False, admin_allow_web: bo
             return "Web search is disabled or internet is unavailable."
         
         results = search_web(query)
-        return format_search_results(results)
+        formatted = format_search_results(results)
+        # We return a tuple or special object if we want to pass raw data through
+        # But LlamaIndex FunctionTool usually expects a string or common type.
+        # We'll stick to string but main.py will extract from the ToolOutput.raw_output
+        return results # Returning raw list so main.py can use it
 
     if admin_allow_web and use_web:
         tools.append(

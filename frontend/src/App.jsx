@@ -15,6 +15,7 @@ const App = () => {
   const [adminAllowedWeb, setAdminAllowedWeb] = useState(true);
   const [activeModel, setActiveModel] = useState('qwen2.5-coder:1.5b');
   const [models, setModels] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const API_BASE = `http://${window.location.hostname}:8000`;
 
@@ -22,6 +23,7 @@ const App = () => {
   useEffect(() => {
     refreshThreads();
     fetchModels();
+    fetchDocuments();
   }, []);
 
   // Load messages when thread changes
@@ -56,6 +58,16 @@ const App = () => {
       setModels(data.models || []);
     } catch (e) {
       console.error("Failed to fetch models", e);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/documents`);
+      const data = await res.json();
+      setDocuments(data || []);
+    } catch (e) {
+      console.error("Failed to fetch documents", e);
     }
   };
 
@@ -201,11 +213,23 @@ const App = () => {
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                   {m.sources && m.sources.length > 0 && (
                     <div className="sources">
-                      {m.sources.map((s, idx) => (
-                        <div key={idx} className="source-tag" title={s.content}>
-                          {s.source || 'Doc'}
-                        </div>
-                      ))}
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Sources:</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {m.sources.map((s, idx) => (
+                          <div
+                            key={idx}
+                            className={`source-chip ${s.type}`}
+                            title={s.content}
+                            onClick={() => s.link && window.open(s.link, '_blank')}
+                            style={{ cursor: s.link ? 'pointer' : 'default' }}
+                          >
+                            <span className="source-icon">
+                              {s.type === 'doc' ? <Database size={10} /> : s.type === 'web' ? <Globe size={10} /> : <Shield size={10} />}
+                            </span>
+                            {s.source} {s.page ? `(Page ${s.page})` : ''}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -264,6 +288,23 @@ const App = () => {
                   >
                     Reset Index / Clear All Docs
                   </button>
+
+                  <div style={{ marginTop: '2rem' }}>
+                    <h4 style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Indexed Files ({documents.length})</h4>
+                    <div className="admin-file-list">
+                      {documents.length === 0 ? (
+                        <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>No documents indexed yet.</p>
+                      ) : (
+                        documents.map((doc, idx) => (
+                          <div key={idx} className="admin-file-item">
+                            <span className="file-name">{doc.name}</span>
+                            <span className="file-size">{(doc.size / 1024).toFixed(1)} KB</span>
+                            <button onClick={() => window.open(`${API_BASE}/documents/${doc.name}`, '_blank')} className="view-btn">View</button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div style={{ background: 'var(--glass)', padding: '1.5rem', borderRadius: '16px' }}>

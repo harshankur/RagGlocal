@@ -8,7 +8,7 @@ def search_web(query: str, max_results: int = 5) -> List[Dict]:
     results = []
     try:
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
+            for r in ddgs.text(query, region='wt-wt', safesearch='on', timelimit='y', max_results=max_results):
                 results.append({
                     "title": r['title'],
                     "link": r['href'],

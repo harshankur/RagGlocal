@@ -1,8 +1,10 @@
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from typing import List
 import shutil
 import os
+import glob
 from config import settings
 from ingestion import ingest_documents, get_vector_index, setup_llm
 
@@ -10,7 +12,7 @@ app = FastAPI(title="Rag Glocal API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For local dev, '*' is usually fine, but let's be explicit if needed
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,25 +28,18 @@ async def health():
 
 @app.post("/admin/upload")
 async def upload_documents(background_tasks: BackgroundTasks, files: List[UploadFile] = File(...)):
-    # Create docs directory if not exists
     os.makedirs(settings.DOCS_PATH, exist_ok=True)
-    
     saved_files = []
     for file in files:
         file_path = os.path.join(settings.DOCS_PATH, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         saved_files.append(file.filename)
-    
-    # Run ingestion in background
     background_tasks.add_task(ingest_documents, settings.DOCS_PATH)
-    
     return {"message": "Files uploaded successfully. Ingestion started in background.", "files": saved_files}
 
 @app.get("/admin/models")
 async def list_models():
-    # In a real scenario, we would query Ollama API
-    # For now, return a placeholder or implement the fetch
     import httpx
     async with httpx.AsyncClient() as client:
         try:
@@ -64,6 +59,27 @@ async def reset_index():
     from ingestion import clear_index
     return clear_index()
 
+@app.get("/admin/documents")
+async def list_documents():
+    if not os.path.exists(settings.DOCS_PATH):
+        return []
+    files = []
+    for f in os.listdir(settings.DOCS_PATH):
+        if os.path.isfile(os.path.join(settings.DOCS_PATH, f)) and not f.startswith('.'):
+            files.append({
+                "name": f,
+                "size": os.path.getsize(os.path.join(settings.DOCS_PATH, f)),
+                "path": f
+            })
+    return files
+
+@app.get("/documents/{filename}")
+async def get_document(filename: str):
+    file_path = os.path.join(settings.DOCS_PATH, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
 from pydantic import BaseModel
 class ChatRequest(BaseModel):
     query: str
@@ -80,35 +96,51 @@ async def chat(request: ChatRequest):
         use_docs=request.use_docs,
         admin_allow_web=settings.ALLOW_WEB_SEARCH
     )
-    print(f"Agent initialized: {type(agent)}")
     
-    # Since we are using an agent, response structure is slightly different
     try:
         response = await agent.achat(request.query)
-        print("Agent response received.")
     except Exception as e:
         print(f"Error during agent call: {str(e)}")
         return {"error": f"Agent error: {str(e)}"}
     
-    # Extract sources from the agent's interaction if possible
-    # Note: ReActAgent doesn't always provide sources in a structured list easily
-    # but we can try to extract from the tools' outputs
     sources = []
     for tool_output in response.sources:
+        raw = tool_output.raw_output
         if tool_output.tool_name == "local_docs":
-            # Extract metadata from the query engine response inside the tool output
-            # This is a bit complex in LlamaIndex Agent, but let's try a simplified version
-            sources.append({
-                "source": "Local Documents",
-                "content": str(tool_output.raw_output)[:300]
-            })
+            if hasattr(raw, 'source_nodes'):
+                for node_with_score in raw.source_nodes:
+                    meta = node_with_score.node.metadata
+                    sources.append({
+                        "source": meta.get("file_name", "Unknown Document"),
+                        "page": meta.get("page_label"),
+                        "content": node_with_score.node.get_content()[:200],
+                        "type": "doc",
+                        "link": f"http://localhost:8000/documents/{meta.get('file_name')}"
+                    })
         elif tool_output.tool_name == "web_search":
+            if isinstance(raw, list):
+                for res in raw:
+                    sources.append({
+                        "source": res.get("title"),
+                        "link": res.get("link"),
+                        "content": res.get("snippet"),
+                        "type": "web"
+                    })
+        elif tool_output.tool_name == "llm":
             sources.append({
-                "source": "Web Search",
-                "content": str(tool_output.raw_output)[:300]
+                "source": "AI Knowledge",
+                "type": "llm"
             })
+
+    unique_sources = []
+    seen = set()
+    for s in sources:
+        key = s.get("link") or (s.get("source") + str(s.get("page", "")))
+        if key not in seen:
+            unique_sources.append(s)
+            seen.add(key)
 
     return {
         "response": str(response),
-        "sources": sources
+        "sources": unique_sources
     }
