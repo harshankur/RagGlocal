@@ -9,7 +9,13 @@ import ReactMarkdown from 'react-markdown';
 import './index.css';
 
 const App = () => {
-  const [mode, setMode] = useState('user'); // 'user' or 'admin'
+  // Determine mode from URL search param: ?mode=admin
+  const getInitialMode = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mode') === 'admin' ? 'admin' : 'user';
+  };
+
+  const [mode, setMode] = useState(getInitialMode());
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -302,47 +308,28 @@ const App = () => {
     <div className="app-container">
       <ToastContainer />
       <Modal />
-      {/* Sidebar */}
-      <div className="sidebar">
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
-          <button
-            className={`mode-toggle ${mode === 'user' ? 'active' : ''}`}
-            onClick={() => setMode('user')}
-            style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: mode === 'user' ? '#6366f1' : '#334155', color: 'white' }}
-          >
-            User
+      {/* Sidebar - only shown in user mode */}
+      {mode === 'user' && (
+        <div className="sidebar">
+          <button className="new-chat-btn" onClick={handleNewChat}>
+            <Plus size={20} /> New Chat
           </button>
-          <button
-            className={`mode-toggle ${mode === 'admin' ? 'active' : ''}`}
-            onClick={() => setMode('admin')}
-            style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: mode === 'admin' ? '#6366f1' : '#334155', color: 'white' }}
-          >
-            Admin
-          </button>
+          <div className="thread-list">
+            {threads.map(t => (
+              <div
+                key={t.id}
+                className={`thread-item ${activeThreadId === t.id ? 'active' : ''}`}
+                onClick={() => setActiveThreadId(t.id)}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {t.title}
+                </span>
+                <Trash size={14} onClick={(e) => { e.stopPropagation(); deleteThread(t.id).then(refreshThreads); }} style={{ color: '#94a3b8' }} />
+              </div>
+            ))}
+          </div>
         </div>
-
-        {mode === 'user' && (
-          <>
-            <button className="new-chat-btn" onClick={handleNewChat}>
-              <Plus size={20} /> New Chat
-            </button>
-            <div className="thread-list">
-              {threads.map(t => (
-                <div
-                  key={t.id}
-                  className={`thread-item ${activeThreadId === t.id ? 'active' : ''}`}
-                  onClick={() => setActiveThreadId(t.id)}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {t.title}
-                  </span>
-                  <Trash size={14} onClick={(e) => { e.stopPropagation(); deleteThread(t.id).then(refreshThreads); }} style={{ color: '#94a3b8' }} />
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      )}
 
       {/* Main Content */}
       <div className="chat-area">
