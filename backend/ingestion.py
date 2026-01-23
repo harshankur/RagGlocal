@@ -42,6 +42,33 @@ def clear_index():
     os.makedirs(settings.CHROMA_DB_PATH, exist_ok=True)
     return {"message": "Index cleared successfully."}
 
+def remove_document(filename: str):
+    """
+    Removes a document from the filesystem and triggers a re-index.
+    """
+    file_path = os.path.join(settings.DOCS_PATH, filename)
+    print(f"Attempting to remove document: {file_path}")
+    
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            print(f"File {filename} deleted from disk.")
+        except Exception as e:
+            print(f"Error deleting file {filename}: {e}")
+            return {"error": str(e)}
+    else:
+        print(f"File {file_path} not found on disk.")
+    
+    print("Clearing index and re-ingesting documents...")
+    clear_index()
+    if os.path.exists(settings.DOCS_PATH) and os.listdir(settings.DOCS_PATH):
+        ingest_documents(settings.DOCS_PATH)
+        print("Re-ingestion complete.")
+    else:
+        print("No documents left to ingest.")
+    
+    return {"message": f"Document {filename} removed and index updated."}
+
 def ingest_documents(directory_path: str):
     setup_llm()
     

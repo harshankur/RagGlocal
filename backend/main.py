@@ -7,6 +7,7 @@ import os
 import glob
 from config import settings
 from ingestion import ingest_documents, get_vector_index, setup_llm
+from pydantic import BaseModel
 
 app = FastAPI(title="Rag Glocal API")
 
@@ -48,11 +49,28 @@ async def list_models():
         except:
             return {"models": []}
 
+@app.get("/admin/settings")
+async def get_settings():
+    return {
+        "active_model": settings.ACTIVE_MODEL,
+        "allow_web_search": settings.ALLOW_WEB_SEARCH
+    }
+
+class SettingsUpdate(BaseModel):
+    model_name: str = None
+    allow_web_search: bool = None
+
 @app.post("/admin/settings")
-async def update_settings(model_name: str):
-    settings.ACTIVE_MODEL = model_name
-    setup_llm()
-    return {"message": f"Active model updated to {model_name}"}
+async def update_settings(update: SettingsUpdate):
+    if update.model_name:
+        settings.ACTIVE_MODEL = update.model_name
+        setup_llm()
+    if update.allow_web_search is not None:
+        settings.ALLOW_WEB_SEARCH = update.allow_web_search
+    return {"message": "Settings updated successfully", "settings": {
+        "active_model": settings.ACTIVE_MODEL,
+        "allow_web_search": settings.ALLOW_WEB_SEARCH
+    }}
 
 @app.post("/admin/reset-index")
 async def reset_index():
@@ -80,7 +98,14 @@ async def get_document(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path)
 
-from pydantic import BaseModel
+@app.delete("/admin/documents/{filename}")
+async def delete_document(filename: str, background_tasks: BackgroundTasks):
+    from ingestion import remove_document
+    # We do it in background if it takes time, but here it's fast enough or we can just call it
+    # However, remove_document clears and re-ingests, which MIGHT take time.
+    background_tasks.add_task(remove_document, filename)
+    return {"message": f"Deletion of {filename} scheduled."}
+
 class ChatRequest(BaseModel):
     query: str
     use_web: bool = False
@@ -144,3 +169,7 @@ async def chat(request: ChatRequest):
         "response": str(response),
         "sources": unique_sources
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host=settings.API_HOST, port=settings.API_PORT, reload=True)

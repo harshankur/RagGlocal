@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Ensure directories exist
-Path(settings.CHROMA_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-Path(settings.DOCS_PATH).parent.mkdir(parents=True, exist_ok=True)
+Path(settings.CHROMA_DB_PATH).mkdir(parents=True, exist_ok=True)
+Path(settings.DOCS_PATH).mkdir(parents=True, exist_ok=True)
+
+# Resolve to absolute paths
+settings.CHROMA_DB_PATH = str(Path(settings.CHROMA_DB_PATH).resolve())
+settings.DOCS_PATH = str(Path(settings.DOCS_PATH).resolve())

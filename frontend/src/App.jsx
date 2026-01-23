@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, addThread, addMessage, getThreads, getMessages, deleteThread } from './db';
-import { Plus, Trash, Archive, Shield, MessageSquare, Send, Globe, Database, Settings, ChevronRight } from 'lucide-react';
+import {
+  Plus, Trash, Archive, Shield, MessageSquare, Send, Globe, Database,
+  Settings, ChevronRight, UploadCloud, FileText, Trash2, Eye,
+  Settings2, Activity, RefreshCw, X, CheckCircle, AlertTriangle, Info
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './index.css';
 
@@ -17,6 +21,9 @@ const App = () => {
   const [models, setModels] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState({}); // { name: status }
+  const [toasts, setToasts] = useState([]);
+  const [modal, setModal] = useState({ show: false, title: '', message: '', onConfirm: null, variant: 'info' });
   const API_BASE = `http://${window.location.hostname}:8000`;
 
   // Load threads on startup
@@ -24,7 +31,19 @@ const App = () => {
     refreshThreads();
     fetchModels();
     fetchDocuments();
+    fetchSettings();
   }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/settings`);
+      const data = await res.json();
+      if (data.active_model) setActiveModel(data.active_model);
+      if (data.allow_web_search !== undefined) setAdminAllowedWeb(data.allow_web_search);
+    } catch (e) {
+      console.error("Failed to fetch settings", e);
+    }
+  };
 
   // Load messages when thread changes
   useEffect(() => {
@@ -65,10 +84,28 @@ const App = () => {
     try {
       const res = await fetch(`${API_BASE}/admin/documents`);
       const data = await res.json();
+
+      // Update uploadingFiles: if a file is now in the documents list, it's done
+      setUploadingFiles(prev => {
+        const next = { ...prev };
+        data.forEach(d => {
+          if (next[d.name]) delete next[d.name];
+        });
+        return next;
+      });
+
       setDocuments(data || []);
     } catch (e) {
       console.error("Failed to fetch documents", e);
     }
+  };
+
+  const addToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
   };
 
   const handleSendMessage = async () => {
@@ -119,42 +156,152 @@ const App = () => {
     if (!files.length) return;
 
     const formData = new FormData();
+    const newUploading = { ...uploadingFiles };
     for (const file of files) {
       formData.append('files', file);
+      newUploading[file.name] = 'Ingesting...';
     }
+    setUploadingFiles(newUploading);
 
-    setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/admin/upload`, {
         method: 'POST',
         body: formData
       });
       const data = await res.json();
-      alert(data.message);
+      addToast(data.message, 'success');
+      // Start polling for documents to update status
+      const interval = setInterval(async () => {
+        const docRes = await fetch(`${API_BASE}/admin/documents`);
+        const docs = await docRes.json();
+        const allDone = files.every(f => docs.some(d => d.name === f.name));
+        if (allDone) {
+          fetchDocuments();
+          clearInterval(interval);
+        }
+      }, 2000);
     } catch (e) {
-      alert("Upload failed.");
-    } finally {
-      setIsLoading(false);
+      addToast("Upload failed.", "error");
+      const resetUploading = { ...uploadingFiles };
+      for (const file of files) delete resetUploading[file.name];
+      setUploadingFiles(resetUploading);
     }
   };
 
   const handleResetIndex = async () => {
-    if (!confirm("Are you sure you want to clear all indexed documents? This cannot be undone.")) return;
+    setModal({
+      show: true,
+      title: 'Reset Index?',
+      message: 'Are you sure you want to clear all indexed documents? This cannot be undone.',
+      variant: 'danger',
+      onConfirm: async () => {
+        setIsLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/admin/reset-index`, { method: 'POST' });
+          const data = await res.json();
+          addToast(data.message, 'success');
+          fetchDocuments();
+        } catch (e) {
+          addToast("Reset failed.", "error");
+        } finally {
+          setIsLoading(false);
+          setModal(prev => ({ ...prev, show: false }));
+        }
+      }
+    });
+  };
 
-    setIsLoading(true);
+  const handleDeleteDocument = async (filename) => {
+    setModal({
+      show: true,
+      title: 'Delete Document',
+      message: `Are you sure you want to delete ${filename}?`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setIsLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/admin/documents/${filename}`, { method: 'DELETE' });
+          const data = await res.json();
+          addToast(data.message, 'info');
+          // Since it's backgrounded, we might want to poll or just wait a bit
+          setTimeout(fetchDocuments, 1000);
+        } catch (e) {
+          addToast("Delete failed.", "error");
+        } finally {
+          setIsLoading(false);
+          setModal(prev => ({ ...prev, show: false }));
+        }
+      }
+    });
+  };
+
+  const handleUpdateModel = async (model) => {
+    setActiveModel(model);
     try {
-      const res = await fetch(`${API_BASE}/admin/reset-index`, { method: 'POST' });
-      const data = await res.json();
-      alert(data.message);
+      await fetch(`${API_BASE}/admin/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_name: model })
+      });
     } catch (e) {
-      alert("Reset failed.");
-    } finally {
-      setIsLoading(false);
+      console.error("Failed to update model", e);
     }
+  };
+
+  const handleUpdateWebSearch = async (allowed) => {
+    setAdminAllowedWeb(allowed);
+    try {
+      await fetch(`${API_BASE}/admin/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allow_web_search: allowed })
+      });
+    } catch (e) {
+      console.error("Failed to update web search", e);
+    }
+  };
+
+  const ToastContainer = () => (
+    <div className="toast-container">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast-item ${t.type}`}>
+          {t.type === 'success' && <CheckCircle size={18} color="#10b981" />}
+          {t.type === 'error' && <AlertTriangle size={18} color="#ef4444" />}
+          {t.type === 'info' && <Info size={18} color="var(--primary)" />}
+          <span>{t.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const Modal = () => {
+    if (!modal.show) return null;
+    return (
+      <div className="modal-overlay" onClick={() => setModal({ ...modal, show: false })}>
+        <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-title">
+            {modal.variant === 'danger' ? <AlertTriangle color="#ef4444" /> : <Info color="var(--primary)" />}
+            {modal.title}
+          </div>
+          <div className="modal-message">{modal.message}</div>
+          <div className="modal-actions">
+            <button className="modal-btn secondary" onClick={() => setModal({ ...modal, show: false })}>Cancel</button>
+            <button
+              className={`modal-btn ${modal.variant === 'danger' ? 'danger' : 'primary'}`}
+              onClick={modal.onConfirm}
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="app-container">
+      <ToastContainer />
+      <Modal />
       {/* Sidebar */}
       <div className="sidebar">
         <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
@@ -266,72 +413,164 @@ const App = () => {
             </div>
           </>
         ) : (
-          <div style={{ padding: '4rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            <div className="admin-overlay">
-              <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Shield size={24} color="#6366f1" /> Admin Settings
-              </h2>
+          <div className="admin-view">
+            <header className="admin-header">
+              <div>
+                <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Shield size={32} color="var(--primary)" /> Command Center
+                </h1>
+                <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>System configuration and knowledge management</p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={fetchDocuments} className="icon-btn" title="Refresh List">
+                  <RefreshCw size={18} />
+                </button>
+                <button onClick={handleResetIndex} className="icon-btn delete" title="Clear All Data">
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </header >
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                <div style={{ background: 'var(--glass)', padding: '1.5rem', borderRadius: '16px' }}>
-                  <h3>Learning Center</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                    Upload documents to teach your AI.
-                  </p>
-                  <label style={{ display: 'block', padding: '1rem', border: '2px dashed var(--border-glass)', borderRadius: '12px', textAlign: 'center', cursor: 'pointer' }}>
-                    Click to Upload Documents
-                    <input type="file" multiple hidden onChange={handleAdminUpload} />
-                  </label>
-                  <button
-                    onClick={handleResetIndex}
-                    style={{ marginTop: '1rem', width: '100%', padding: '0.8rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer' }}
-                  >
-                    Reset Index / Clear All Docs
-                  </button>
-
-                  <div style={{ marginTop: '2rem' }}>
-                    <h4 style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Indexed Files ({documents.length})</h4>
-                    <div className="admin-file-list">
-                      {documents.length === 0 ? (
-                        <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>No documents indexed yet.</p>
-                      ) : (
-                        documents.map((doc, idx) => (
-                          <div key={idx} className="admin-file-item">
-                            <span className="file-name">{doc.name}</span>
-                            <span className="file-size">{(doc.size / 1024).toFixed(1)} KB</span>
-                            <button onClick={() => window.open(`${API_BASE}/documents/${doc.name}`, '_blank')} className="view-btn">View</button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ background: 'var(--glass)', padding: '1.5rem', borderRadius: '16px' }}>
-                  <h3>System Config</h3>
-                  <div style={{ marginTop: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem' }}>Active Model</label>
-                    <select
-                      value={activeModel}
-                      onChange={(e) => setActiveModel(e.target.value)}
-                      style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: '#334155', border: 'none', color: 'white' }}
-                    >
-                      {models.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
-                      <option value="llama3.1:8b">llama3.1:8b</option>
-                    </select>
-                  </div>
-
-                  <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <input type="checkbox" checked={adminAllowedWeb} onChange={(e) => setAdminAllowedWeb(e.target.checked)} />
-                    <label>Globally Enable Web Search</label>
-                  </div>
+            <div className="stat-grid">
+              <div className="stat-card">
+                <span className="stat-label">Total Documents</span>
+                <span className="stat-value">{documents.length}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: '#10b981' }}>
+                  <Activity size={12} /> Active nodes indexed
                 </div>
               </div>
+              <div className="stat-card">
+                <span className="stat-label">System Model</span>
+                <span className="stat-value" style={{ fontSize: '1.2rem' }}>{activeModel.split(':')[0]}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{activeModel.split(':')[1] || 'latest'}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">Knowledge Size</span>
+                <span className="stat-value">{(documents.reduce((acc, d) => acc + d.size, 0) / 1024).toFixed(1)} <span style={{ fontSize: '1rem' }}>KB</span></span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Compressed vector storage</span>
+              </div>
             </div>
-          </div>
+
+            <main className="admin-sections">
+              <section className="section-card">
+                <h3 className="section-title"><Database size={20} color="var(--primary)" /> Knowledge Base</h3>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>FILE NAME</th>
+                        <th>SIZE</th>
+                        <th>TYPE</th>
+                        <th>ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {documents.length === 0 && Object.keys(uploadingFiles).length === 0 ? (
+                        <tr>
+                          <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', opacity: 0.5 }}>
+                            <FileText size={48} style={{ marginBottom: '1rem' }} />
+                            <p>No documents found in knowledge base.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {Object.entries(uploadingFiles).map(([name, status]) => (
+                            <tr key={name} className="pulse">
+                              <td>
+                                <div className="file-info">
+                                  <FileText size={18} className="file-icon" />
+                                  <span>{name}</span>
+                                  <span className="ingesting-tag">{status}</span>
+                                </div>
+                              </td>
+                              <td>-</td>
+                              <td>{name.split('.').pop().toUpperCase()}</td>
+                              <td>
+                                <div className="action-btns" style={{ opacity: 0.5 }}>
+                                  <button className="icon-btn" disabled>
+                                    <Eye size={16} />
+                                  </button>
+                                  <button className="icon-btn delete" disabled>
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                          {documents.map((doc, idx) => (
+                            <tr key={idx}>
+                              <td>
+                                <div className="file-info">
+                                  <FileText size={18} className="file-icon" />
+                                  <span>{doc.name}</span>
+                                </div>
+                              </td>
+                              <td>{(doc.size / 1024).toFixed(1)} KB</td>
+                              <td>{doc.name.split('.').pop().toUpperCase()}</td>
+                              <td>
+                                <div className="action-btns">
+                                  <button className="icon-btn" onClick={() => window.open(`${API_BASE}/documents/${doc.name}`, '_blank')} title="View Document">
+                                    <Eye size={16} />
+                                  </button>
+                                  <button className="icon-btn delete" onClick={() => handleDeleteDocument(doc.name)} title="Delete Document">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <aside style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                <section className="section-card">
+                  <h3 className="section-title"><UploadCloud size={20} color="var(--primary)" /> Ingest</h3>
+                  <label className="upload-dropzone">
+                    <UploadCloud size={40} />
+                    <span>Drop files here or click to browse</span>
+                    <p style={{ fontSize: '0.7rem', opacity: 0.6 }}>Supports PDF, TXT, MD, DOCX</p>
+                    <input type="file" multiple hidden onChange={handleAdminUpload} />
+                  </label>
+                </section>
+
+                <section className="section-card">
+                  <h3 className="section-title"><Settings2 size={20} color="var(--primary)" /> Config</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Active Neural Model</label>
+                      <select
+                        value={activeModel}
+                        onChange={(e) => handleUpdateModel(e.target.value)}
+                        style={{ width: '100%', padding: '0.8rem', borderRadius: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: 'white', outline: 'none' }}
+                      >
+                        {models.map(m => <option key={m.name} value={m.name} style={{ background: '#1e293b' }}>{m.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="stat-card" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.9rem' }}>Global Web Search</span>
+                        <input
+                          type="checkbox"
+                          checked={adminAllowedWeb}
+                          onChange={(e) => handleUpdateWebSearch(e.target.checked)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                      </div>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px' }}>Allow users to bypass local knowledge for real-time web results.</p>
+                    </div>
+                  </div>
+                </section>
+              </aside>
+            </main>
+          </div >
         )}
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 
