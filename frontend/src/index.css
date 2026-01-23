@@ -490,6 +490,71 @@ textarea {
 /* Existing Admin overrides (keeping them consistent but adjusted for new vars) */
 .admin-view {
   padding: 3rem;
+  height: 100%;
+  overflow-y: auto;
+  background: radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.05), transparent);
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3rem;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.stat-card {
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-glass);
+  padding: 2rem;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  transition: var(--transition);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--primary);
+  background: var(--glass-heavy);
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+}
+
+.admin-sections {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.admin-sections>section:first-child {
+  grid-column: span 2;
+}
+
+.admin-sections>aside {
+  grid-column: span 1;
 }
 
 .section-card {
@@ -498,4 +563,115 @@ textarea {
   border: 1px solid var(--border-glass);
   padding: 2rem;
   border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+/* Data Table */
+.table-container {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.data-table th {
+  padding: 1.2rem 1rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.data-table td {
+  padding: 1.2rem 1rem;
+  border-bottom: 1px solid var(--border-glass);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-icon {
+  color: var(--primary);
+  opacity: 0.8;
+}
+
+.action-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.icon-btn {
+  background: var(--glass-heavy);
+  border: 1px solid var(--border-glass);
+  padding: 8px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background: var(--glass);
+  color: var(--text-main);
+  border-color: var(--primary);
+}
+
+.icon-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Upload Area */
+.upload-dropzone {
+  border: 2px dashed var(--border-glass);
+  border-radius: 16px;
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.upload-dropzone:hover {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.05);
+  color: var(--text-main);
 }
