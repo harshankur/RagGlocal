@@ -321,10 +321,19 @@ const App = () => {
                 className={`thread-item ${activeThreadId === t.id ? 'active' : ''}`}
                 onClick={() => setActiveThreadId(t.id)}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {t.title}
-                </span>
-                <Trash size={14} onClick={(e) => { e.stopPropagation(); deleteThread(t.id).then(refreshThreads); }} style={{ color: '#94a3b8' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                  <MessageSquare size={16} style={{ flexShrink: 0, opacity: 0.7 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t.title}
+                  </span>
+                </div>
+                <button
+                  className="delete-btn"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                  onClick={(e) => { e.stopPropagation(); deleteThread(t.id).then(refreshThreads); }}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>
@@ -337,66 +346,91 @@ const App = () => {
           <>
             <div className="messages-container">
               {messages.length === 0 && (
-                <div style={{ textAlign: 'center', marginTop: '10rem', opacity: 0.5 }}>
+                <div className="hero">
                   <h1>Rag Glocal</h1>
-                  <p>Ask anything about your documents...</p>
+                  <p>Sophisticated intelligence for your document knowledge base.</p>
                 </div>
               )}
               {messages.map(m => (
-                <div key={m.id} className={`message ${m.role}`}>
-                  <ReactMarkdown>{m.content}</ReactMarkdown>
-                  {m.sources && m.sources.length > 0 && (
-                    <div className="sources">
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Sources:</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {m.sources.map((s, idx) => (
-                          <div
-                            key={idx}
-                            className={`source-chip ${s.type}`}
-                            title={s.content}
-                            onClick={() => s.link && window.open(s.link, '_blank')}
-                            style={{ cursor: s.link ? 'pointer' : 'default' }}
-                          >
-                            <span className="source-icon">
-                              {s.type === 'doc' ? <Database size={10} /> : s.type === 'web' ? <Globe size={10} /> : <Shield size={10} />}
-                            </span>
-                            {s.source} {s.page ? `(Page ${s.page})` : ''}
-                          </div>
-                        ))}
+                <div key={m.id} className={`message-wrapper ${m.role}`}>
+                  <div className={`avatar ${m.role}`}>
+                    {m.role === 'user' ? <Plus size={18} color="white" /> : <Activity size={18} color="var(--primary)" />}
+                  </div>
+                  <div className={`message ${m.role}`}>
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                    {m.sources && m.sources.length > 0 && (
+                      <div className="sources">
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Sources:</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {m.sources.map((s, idx) => (
+                            <div
+                              key={idx}
+                              className={`source-chip ${s.type}`}
+                              title={s.content}
+                              onClick={() => s.link && window.open(s.link, '_blank')}
+                              style={{ cursor: s.link ? 'pointer' : 'default' }}
+                            >
+                              <span className="source-icon">
+                                {s.type === 'doc' ? <Database size={10} /> : s.type === 'web' ? <Globe size={10} /> : <Shield size={10} />}
+                              </span>
+                              {s.source} {s.page ? `(Page ${s.page})` : ''}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
-              {isLoading && <div className="message ai">Thinking...</div>}
+              {isLoading && (
+                <div className="message-wrapper ai">
+                  <div className="avatar ai"><Activity size={18} color="var(--primary)" /></div>
+                  <div className="thinking">
+                    <div className="dot"></div>
+                    <div className="dot"></div>
+                    <div className="dot"></div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="input-container">
-              <textarea
-                placeholder="Message RAG Glocal..."
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-              />
-              <button
-                className={`web-toggle ${isWebSearchEnabled ? 'active' : ''}`}
-                onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled)}
-                style={{ border: 'none', background: 'transparent', color: isWebSearchEnabled ? '#38bdf8' : '#64748b', cursor: 'pointer' }}
-                title="Toggle Web Search"
-              >
-                <Globe size={20} />
-              </button>
-              <button
-                className={`doc-toggle ${isDocSearchEnabled ? 'active' : ''}`}
-                onClick={() => setIsDocSearchEnabled(!isDocSearchEnabled)}
-                style={{ border: 'none', background: 'transparent', color: isDocSearchEnabled ? '#818cf8' : '#64748b', cursor: 'pointer', marginRight: '10px' }}
-                title="Toggle Document Search"
-              >
-                <Database size={20} />
-              </button>
-              <button className="send-btn" onClick={handleSendMessage}>
-                <Send size={18} />
-              </button>
+            <div className="input-area-wrapper">
+              <div className="input-container">
+                <textarea
+                  placeholder="Ask anything..."
+                  value={inputText}
+                  rows="1"
+                  onChange={(e) => {
+                    setInputText(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                />
+                <div className="input-actions">
+                  <button
+                    className={`toggle-btn ${isWebSearchEnabled ? 'active' : ''}`}
+                    onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled)}
+                    title="Web Search"
+                  >
+                    <Globe size={18} />
+                  </button>
+                  <button
+                    className={`toggle-btn ${isDocSearchEnabled ? 'active' : ''}`}
+                    onClick={() => setIsDocSearchEnabled(!isDocSearchEnabled)}
+                    title="Vector Knowledge"
+                  >
+                    <Database size={18} />
+                  </button>
+                  <button
+                    className="send-btn"
+                    onClick={handleSendMessage}
+                    disabled={!inputText.trim() || isLoading}
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+              </div>
             </div>
           </>
         ) : (
