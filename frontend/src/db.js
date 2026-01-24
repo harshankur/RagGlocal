@@ -51,3 +51,7 @@ export const deleteThread = async (threadId) => {
         await db.threads.delete(threadId);
     });
 };
+
+export const renameThread = async (threadId, newTitle) => {
+    return await db.threads.update(threadId, { title: newTitle, updatedAt: new Date() });
+};

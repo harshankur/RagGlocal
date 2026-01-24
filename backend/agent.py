@@ -25,7 +25,11 @@ class ToollessChat:
         class MockResponse:
             def __init__(self, text):
                 self.text = text
-                self.sources = [{"tool_name": "llm", "raw_output": "General Knowledge"}]
+                class MockSource:
+                    def __init__(self, name, raw):
+                        self.tool_name = name
+                        self.raw_output = raw
+                self.sources = [MockSource("llm", "General Knowledge")]
             def __str__(self):
                 return self.text
         return MockResponse(str(response))
@@ -38,13 +42,16 @@ def get_agent(use_web: bool = False, use_docs: bool = False, admin_allow_web: bo
     
     # 1. Local Documents Tool
     if index and use_docs:
-        query_engine = index.as_query_engine(similarity_top_k=3)
+        query_engine = index.as_query_engine(
+            similarity_top_k=5,
+            response_mode="compact"
+        )
         tools.append(
             QueryEngineTool(
                 query_engine=query_engine,
                 metadata=ToolMetadata(
                     name="local_docs",
-                    description="Search through the user's uploaded documents and local knowledge base. Use this for specific private info."
+                    description="ALWAYS use this tool to answer questions based on the user's uploaded documents (PDFs, TXT, etc). This tool contains the specific knowledge base required for 'door speakers' and other file content."
                 ),
             )
         )

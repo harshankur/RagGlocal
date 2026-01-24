@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, addThread, addMessage, getThreads, getMessages, deleteThread } from './db';
+import { db, addThread, addMessage, getThreads, getMessages, deleteThread, renameThread } from './db';
 import {
   Plus, Trash, Archive, Shield, MessageSquare, Send, Globe, Database,
   Settings, ChevronRight, UploadCloud, FileText, Trash2, Eye,
-  Settings2, Activity, RefreshCw, X, CheckCircle, AlertTriangle, Info
+  Settings2, Activity, RefreshCw, X, CheckCircle, AlertTriangle, Info,
+  Copy, RotateCcw, Edit2, Check
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './index.css';
@@ -23,7 +24,7 @@ const App = () => {
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [isDocSearchEnabled, setIsDocSearchEnabled] = useState(true);
   const [adminAllowedWeb, setAdminAllowedWeb] = useState(true);
-  const [activeModel, setActiveModel] = useState('qwen2.5-coder:1.5b');
+  const [activeModel, setActiveModel] = useState('llama3.2:3b');
   const [models, setModels] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -241,6 +242,76 @@ const App = () => {
     });
   };
 
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text);
+    addToast("Copied to clipboard", "success");
+  };
+
+  const handleRegenerate = async () => {
+    // Basic regeneration: Remove last AI message and re-send the last user message
+    if (messages.length < 2) return;
+
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role !== 'ai') return; // Should be AI message to regenerate
+
+    // Find last user message
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMsg) return;
+
+    // In a real app we might delete the last AI message from DB or just ignore it in UI
+    // Here we'll just trigger the send logic with the user's text again.
+    // Ideally we should visually remove the last AI message first.
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: lastUserMsg.content,
+          use_web: isWebSearchEnabled,
+          use_docs: isDocSearchEnabled
+        })
+      });
+      const data = await res.json();
+
+      // We'll append a NEW message for now, as "regeneration"
+      if (data.error) {
+        await addMessage(activeThreadId, 'ai', `⚠️ ${data.error}`);
+      } else {
+        await addMessage(activeThreadId, 'ai', data.response, data.sources);
+      }
+      loadMessages(activeThreadId);
+    } catch (e) {
+      addToast("Regeneration failed", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const [editingThreadId, setEditingThreadId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+
+  const startEditing = (t) => {
+    setEditingThreadId(t.id);
+    setEditTitle(t.title);
+  };
+
+  const cancelEditing = () => {
+    setEditingThreadId(null);
+    setEditTitle('');
+  };
+
+  const saveTitle = async (id) => {
+    if (editTitle.trim()) {
+      await renameThread(id, editTitle.trim());
+      refreshThreads();
+    }
+    cancelEditing();
+  };
+
   const handleUpdateModel = async (model) => {
     setActiveModel(model);
     try {
@@ -323,22 +394,48 @@ const App = () => {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
                   <MessageSquare size={16} style={{ flexShrink: 0, opacity: 0.7 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {t.title}
-                  </span>
+                  {editingThreadId === t.id ? (
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onBlur={() => saveTitle(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveTitle(t.id);
+                        if (e.key === 'Escape') cancelEditing();
+                        e.stopPropagation();
+                      }}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      className="edit-title-input"
+                    />
+                  ) : (
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      {t.title}
+                    </span>
+                  )}
+                  <div className="thread-actions">
+                    <button
+                      className="action-btn"
+                      onClick={(e) => { e.stopPropagation(); startEditing(t); }}
+                      title="Rename"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                    <button
+                      className="action-btn delete"
+                      onClick={(e) => { e.stopPropagation(); deleteThread(t.id).then(refreshThreads); }}
+                      title="Delete"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  className="delete-btn"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                  onClick={(e) => { e.stopPropagation(); deleteThread(t.id).then(refreshThreads); }}
-                >
-                  <Trash2 size={14} />
-                </button>
               </div>
             ))}
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* Main Content */}
       <div className="chat-area">
@@ -351,7 +448,7 @@ const App = () => {
                   <p>Sophisticated intelligence for your document knowledge base.</p>
                 </div>
               )}
-              {messages.map(m => (
+              {messages.map((m, idx) => (
                 <div key={m.id} className={`message-wrapper ${m.role}`}>
                   <div className={`avatar ${m.role}`}>
                     {m.role === 'user' ? <Plus size={18} color="white" /> : <Activity size={18} color="var(--primary)" />}
@@ -379,6 +476,17 @@ const App = () => {
                         </div>
                       </div>
                     )}
+                    <div className="message-actions">
+                      <button className="msg-action-btn" onClick={() => handleCopy(m.content)} title="Copy">
+                        <Copy size={14} />
+                      </button>
+                      {/* Only show regenerate for the very last AI message */}
+                      {m.role === 'ai' && idx === messages.length - 1 && !isLoading && (
+                        <button className="msg-action-btn" onClick={handleRegenerate} title="Regenerate">
+                          <RotateCcw size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -572,7 +680,7 @@ const App = () => {
                       </select>
                     </div>
 
-                    <div className="stat-card" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
+                    <div className="nested-card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.9rem' }}>Global Web Search</span>
                         <input

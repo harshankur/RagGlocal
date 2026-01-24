@@ -130,8 +130,11 @@ async def chat(request: ChatRequest):
     
     sources = []
     for tool_output in response.sources:
-        raw = tool_output.raw_output
-        if tool_output.tool_name == "local_docs":
+        # Handle both object attributes and dict keys for robustness
+        raw = getattr(tool_output, 'raw_output', None) or (tool_output.get('raw_output') if isinstance(tool_output, dict) else None)
+        tool_name = getattr(tool_output, 'tool_name', None) or (tool_output.get('tool_name') if isinstance(tool_output, dict) else None)
+        
+        if tool_name == "local_docs":
             if hasattr(raw, 'source_nodes'):
                 for node_with_score in raw.source_nodes:
                     meta = node_with_score.node.metadata

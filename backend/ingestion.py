@@ -23,6 +23,7 @@ def setup_llm():
     )
 
 def get_vector_index():
+    setup_llm()
     db = chromadb.PersistentClient(path=settings.CHROMA_DB_PATH)
     chroma_collection = db.get_or_create_collection("rag_collection")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)

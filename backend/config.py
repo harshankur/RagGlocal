@@ -3,7 +3,7 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    ACTIVE_MODEL: str = "qwen2.5-coder:1.5b"
+    ACTIVE_MODEL: str = "llama3.2:3b"
     EMBED_MODEL: str = "nomic-embed-text"
     CHROMA_DB_PATH: str = "./data/chroma"
     DOCS_PATH: str = "./data/docs"
@@ -21,6 +21,7 @@ settings = Settings()
 Path(settings.CHROMA_DB_PATH).mkdir(parents=True, exist_ok=True)
 Path(settings.DOCS_PATH).mkdir(parents=True, exist_ok=True)
 
-# Resolve to absolute paths
-settings.CHROMA_DB_PATH = str(Path(settings.CHROMA_DB_PATH).resolve())
-settings.DOCS_PATH = str(Path(settings.DOCS_PATH).resolve())
+# Resolve to absolute paths relative to project root
+BASE_DIR = Path(__file__).resolve().parent.parent
+settings.CHROMA_DB_PATH = str((BASE_DIR / "data" / "chroma").resolve())
+settings.DOCS_PATH = str((BASE_DIR / "data" / "docs").resolve())
